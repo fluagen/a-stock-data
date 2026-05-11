@@ -188,3 +188,159 @@ pip install mootdx akshare requests pandas
 [Apache License 2.0](./LICENSE) — 自由使用，注明出处即可。
 
 **作者：** Simon 林 · 抖音「Simon林」 · 公众号「硅基世纪」
+
+---
+
+<details>
+<summary><b>🇬🇧 English</b></summary>
+
+# a-stock-data
+
+Full-stack data toolkit for China A-Share market — 6-layer architecture · 15 endpoints · 7 data sources, battle-tested
+
+A self-contained Skill file that consolidates raw A-share data from 7 sources into a ready-to-use toolkit for AI coding assistants. No need to memorize mootdx candlestick parameters, Eastmoney PDF Referer headers, or iwencai X-Claw authentication — it's all handled.
+
+> Compatible with [Claude Code](https://github.com/anthropics/claude-code) · [Codex](https://github.com/openai/codex) · [OpenClaw](https://github.com/anthropics/openclaw)
+>
+> The Skill file is structured Markdown + embedded Python. Any AI coding assistant with context injection can use it.
+
+---
+
+## Architecture
+
+```
+China A-Share Full-Stack Data · 6-Layer Architecture
+│
+├── Market Data    mootdx + Tencent Finance     Candlesticks + Level-2 Order Book + PE/PB/Market Cap/Turnover
+├── Research       Eastmoney + akshare + iwencai Report list / PDF download / Consensus EPS / NL search
+├── Signals        THS Hot Stocks + Northbound   Today's movers + Sector attribution + Minute-level fund flow
+├── News           akshare × 3                   Stock news / CLS flash / Global finance
+├── Fundamentals   mootdx finance / F10          37-field quarterly report + 9 categories of company data
+└── Filings        cninfo + mootdx               Full filings across SSE / SZSE / BSE
+```
+
+---
+
+## Quick Start
+
+**3 steps, 2 minutes.**
+
+```bash
+# 1. Create skill directory
+mkdir -p ~/.claude/skills/a-stock-data
+
+# 2. Download SKILL.md
+curl -o ~/.claude/skills/a-stock-data/SKILL.md \
+  https://raw.githubusercontent.com/simonlin1212/a-stock-data/main/SKILL.md
+
+# 3. Install dependencies
+pip install mootdx akshare requests pandas
+```
+
+Launch Claude Code and say "Check the valuation of 688017" — the skill activates automatically.
+
+> **Codex / OpenClaw users:** Paste the contents of SKILL.md into your system prompt or project context file. The embedded Python code is ready to execute.
+
+---
+
+## 15 Endpoints
+
+### Market Data (real-time, no IP ban)
+
+| Endpoint | Data |
+|----------|------|
+| mootdx Candlesticks | Daily / Weekly / Monthly / 1m / 5m / 15m / 30m / 60m |
+| mootdx Order Book | Level-2 bid/ask + real-time quote (46 fields) |
+| mootdx Tick-by-tick | Every trade (time / price / volume / direction) |
+| Tencent Finance | PE(TTM) / PB / Market Cap / Float Cap / Turnover / Price Limits |
+
+### Research Reports
+
+| Endpoint | Data |
+|----------|------|
+| Eastmoney reportapi | Report list + ratings + 3-year EPS forecasts |
+| Eastmoney PDF | Full research report PDF (Referer auth handled) |
+| akshare Consensus | Institutional consensus EPS (THS source) |
+| iwencai NL Search | Natural language cross-topic report search |
+
+### Signals
+
+| Endpoint | Data |
+|----------|------|
+| THS Hot Stocks | Today's strong stocks + sector attribution tags (editorial annotations) |
+| THS Northbound (real-time) | Shanghai/Shenzhen Connect minute-level flow (262 data points) |
+| THS Northbound (historical) | Daily historical northbound fund flow |
+
+### News
+
+| Endpoint | Data |
+|----------|------|
+| Stock News | Eastmoney per-stock news feed |
+| CLS Flash | Minute-level telegrams |
+| Global News | Eastmoney global finance news |
+
+### Fundamentals + Filings
+
+| Endpoint | Data |
+|----------|------|
+| Quarterly Snapshot | 37 fields (EPS / ROE / Net Profit / Revenue...) |
+| F10 Company Data | 9 categories (Overview / Shareholders / Industry...) |
+| cninfo Filings | Full filings across all exchanges |
+
+### Authentication
+
+6 data sources are **completely free, no API key needed**. Only iwencai semantic search requires an API key ([apply here](https://www.iwencai.com/skillhub)).
+
+---
+
+## Usage Examples
+
+Just tell your AI assistant:
+
+| Scenario | Prompt |
+|----------|--------|
+| Valuation | "Estimate 688017 — give me PE / PEG / payback period" |
+| Sector Attribution | "Which stocks are strong today and what sectors are driving them" |
+| Research Reports | "Latest reports on humanoid robot supply chain, especially ball screws and reducers" |
+| Northbound Flow | "How's northbound capital flow looking today" |
+| News & Filings | "Pull recent news and filings for 300476" |
+| Batch Compare | "Compare valuations of these 5 semiconductor stocks" |
+
+### 4 Built-in Research Workflows
+
+| Workflow | What it does | Time |
+|----------|-------------|------|
+| Single Stock Valuation | Live price → Consensus EPS → Forward PE / PEG / PE payback years | 30 sec |
+| Batch Comparison | Side-by-side valuation ranking | 1 min |
+| Thematic Research | iwencai multi-keyword NL search + Eastmoney PDF cross-reference | 2 min |
+| New Target Research | Institutional coverage check → Valuation → Moat assessment | 1 min |
+
+---
+
+## Data Source Priority
+
+| Priority | Source | Protocol | IP Ban Risk |
+|----------|--------|----------|-------------|
+| 1 | mootdx | TCP (7709) | Very low |
+| 2 | Tencent Finance | HTTP | Low |
+| 3 | akshare | Python | Medium (Eastmoney source) |
+| 4 | iwencai | OpenAPI | Low (key required) |
+| 5 | Eastmoney PDF | HTTP | Low |
+| 6 | THS Hot Stocks | HTTP | Very low (zero auth) |
+| 7 | THS Northbound | HTTP | Very low (zero auth) |
+
+---
+
+## Disclaimer
+
+This project provides data access tools only and does not constitute investment advice. Investing involves risk.
+
+---
+
+## License
+
+[Apache License 2.0](./LICENSE)
+
+**Author:** Simon Lin · Douyin "Simon林" · WeChat Official Account "硅基世纪"
+
+</details>
