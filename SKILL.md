@@ -2,16 +2,16 @@
 name: a-stock-data
 description: A股全栈数据工具包 — 覆盖行情(mootdx+腾讯+百度K线)、研报(东财+同花顺+iwencai)、信号(同花顺热点+北向+龙虎榜+解禁+行业)、资金面(融资融券+大宗交易+股东户数+分红+资金流分钟级+资金流120日)、新闻(东财个股+全球资讯)、基础数据(mootdx财务/F10+东财+新浪三表)、公告(巨潮)、打板(涨停池/连板梯队/炸板率/跌停)、ETF期权(T型报价/希腊字母/IV)、舆情互动(互动易问答/热榜/人气榜)十层数据源，内嵌全部调用代码，自包含零依赖外部文件。优先用通达信(mootdx)/腾讯(不封IP)，东财接口已内置限流防封。适用于个股估值、研报检索、题材归因、龙虎榜跟踪、解禁预警、行业轮动、融资融券跟踪、筹码分析、产业链调研、批量筛选、打板情绪跟踪、ETF期权策略、投资者互动问答、市场热度选题等场景。
 origin: custom
-version: 3.3.0
+version: 3.3.1
 ---
 
 > 📦 项目主页：https://github.com/simonlin1212/a-stock-data — 更新、反馈、支持作者
 > 
 > 作者：Simon 林 · 抖音「Simon林」· 公众号「硅基世纪」
 
-# A股全栈数据工具包 V3.3.0
+# A股全栈数据工具包 V3.3.1
 
-十层数据架构，40 个端点实测可用（2026-06 验证；财联社快讯已下线，详见 §5.2），覆盖主板/中小板/科创板/ST。
+十层数据架构，41 个端点实测可用（2026-06 验证；财联社快讯已下线，详见 §5.2），覆盖主板/中小板/科创板/ST。
 
 > **V3.2.3（行业研报新增）：**
 > - **§2.1 东财行业研报 `eastmoney_industry_reports()`**：研报层补上行业研报端点（此前只有个股研报）。与个股研报**同端点** `reportapi.eastmoney.com/report/list`，仅 `qType=1`；`industry_code="*"` 拉全行业、传东财行业码（如 `1238`=IT服务Ⅱ）精确过滤，PDF 复用 `download_pdf()`，走 `em_get` 限流。端点数 27 → 28。
@@ -43,7 +43,8 @@ version: 3.3.0
 行情层（实时，不封IP）
 ├── mootdx        → K线 + 五档盘口 + 逐笔成交 (TCP 7709)
 ├── 腾讯财经 API   → PE/PB/市值/换手率/涨跌停/指数/ETF (HTTP)
-└── 百度股市通     → K线带MA5/10/20 (V3.0 新增，HTTP)
+├── 百度股市通     → K线带MA5/10/20 (V3.0 新增，HTTP)
+└── 东财 push2his  → 通用K线 个股/指数/板块 含成交额 (§1.4，V3.3.1 新增，HTTP)
 
 研报层
 ├── 东财 reportapi → 个股研报 + 行业研报 + PDF下载 + 评级 + 三年EPS
@@ -65,6 +66,7 @@ version: 3.3.0
 ├── 大宗交易       → 成交价/量 + 买卖方营业部 (datacenter-web)
 ├── 股东户数变化   → 季度股东户数 + 环比变化 (datacenter-web)
 ├── 分红送转       → 历史每股派息/送股/转增 (datacenter-web)
+├── 东财 push2his  → 通用K线 个股/指数/板块 含成交额 (§1.4，V3.3.1 新增，HTTP)
 └── 个股资金流120日 → 主力/大单/中单/小单 日级净流入 (push2his)
 
 新闻层
@@ -528,6 +530,166 @@ print("字段:", data["keys"][:10])
 print("最近5根K线:", data["rows"][-5:])
 # keys 包含: time, open, close, high, low, volume, amount, ma5avgprice, ma10avgprice, ma20avgprice 等
 ```
+
+### 1.4 东财 push2his 通用K线 — 个股/指数/板块历史数据 含成交额（V3.3.1 新增）
+
+**核心价值：** 一个端点覆盖个股、指数、板块的日线历史 K 线，含成交额（amount）。解决了此前 mootdx 对指数不兼容、新浪 K 线无成交额、腾讯仅实时快照的问题。
+
+```python
+from datetime import datetime, timedelta
+
+# ─── 指数名称 → secid 映射（常用指数） ─────────────────────────────
+INDEX_SECID_MAP = {
+    "上证指数": "1.000001",  "上证": "1.000001",
+    "深证成指": "0.399001",  "深证": "0.399001",
+    "创业板指": "0.399006",  "创业板": "0.399006",
+    "科创50":   "1.000688",
+    "沪深300":  "1.000300",
+    "上证50":   "1.000016",
+    "中证500":  "1.000905",
+    "中证1000": "1.000852",
+    "北证50":   "0.899050",
+}
+
+def eastmoney_kline(secid: str, days: int = 30, klt: str = "101") -> list[dict]:
+    """
+    东财 K线历史数据 — 个股/指数/板块通用（已内置限流）。
+    
+    secid 格式:
+      - 个股: "0.000001" 或 "1.600519"
+      - 指数: "1.000001" (上证), "0.399001" (深证) ...
+      - 板块: "90.BK0420" (BK码从 industry_comparison 的 f12 字段获取)
+    klt: "101"=日线, "102"=周线, "103"=月线
+    days: 返回最近 N 个自然日内的交易日（从今天往前推）
+    
+    返回字段: date, open, close, high, low, volume(手), amount(元), 
+             amplitude, change_pct, change_amt, turnover_pct
+    """
+    end_date = datetime.now().strftime("%Y%m%d")
+    beg_date = (datetime.now() - timedelta(days=days + 10)).strftime("%Y%m%d")
+    
+    url = "https://push2his.eastmoney.com/api/qt/stock/kline/get"
+    params = {
+        "secid": secid,
+        "klt": klt, "fqt": "0",
+        "beg": beg_date, "end": end_date,
+        "lmt": str(max(days + 5, 30)),
+        "fields1": "f1,f2,f3,f4,f5,f6",
+        "fields2": "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61",
+    }
+    r = em_get(url, params=params, timeout=15)
+    d = r.json()
+    klines = d.get("data", {}).get("klines", []) or []
+    
+    rows = []
+    for line in klines:
+        parts = line.split(",")
+        if len(parts) >= 11:
+            rows.append({
+                "date":        parts[0],
+                "open":        float(parts[1]),
+                "close":       float(parts[2]),
+                "high":        float(parts[3]),
+                "low":         float(parts[4]),
+                "volume":      float(parts[5]),   # 手
+                "amount":      float(parts[6]),   # 元
+                "amplitude":   float(parts[7]),
+                "change_pct":  float(parts[8]),   # %
+                "change_amt":  float(parts[9]),
+                "turnover_pct": float(parts[10]) if parts[10] != "-" else 0,
+            })
+    return rows
+
+def index_kline(name: str, days: int = 30) -> list[dict]:
+    """
+    指数 K线快捷查询。
+    name: 指数名 (如 "上证指数", "创业板指", "科创50") 或直接传 secid
+    days: 返回最近 N 个交易日
+    """
+    secid = INDEX_SECID_MAP.get(name, name)
+    return eastmoney_kline(secid, days=days)
+
+def board_kline(bk_code: str, days: int = 30) -> list[dict]:
+    """
+    板块 K线查询。
+    bk_code: BK板块代码 (如 "BK0420"=航空机场, "BK0421"=铁路公路)
+             代码可从 industry_comparison() 的 f12 字段获取
+    """
+    secid = f"90.{bk_code}" if not bk_code.startswith("90.") else bk_code
+    return eastmoney_kline(secid, days=days)
+
+def market_total_amount(days: int = 5) -> list[dict]:
+    """
+    两市合计成交额（最近 N 个交易日）。
+    返回: [{date, sh_amount(上证成交额/亿), sz_amount(深证成交额/亿), total(合计/亿)}]
+    """
+    sh = eastmoney_kline("1.000001", days=days)
+    sz = eastmoney_kline("0.399001", days=days)
+    
+    sz_map = {r["date"]: r["amount"] for r in sz}
+    
+    rows = []
+    for r in sh:
+        dt = r["date"]
+        sz_amt = sz_map.get(dt, 0)
+        sh_yi = r["amount"] / 1e8
+        sz_yi = sz_amt / 1e8
+        rows.append({
+            "date": dt,
+            "sh_amount": round(sh_yi, 2),
+            "sz_amount": round(sz_yi, 2),
+            "total": round(sh_yi + sz_yi, 2),
+        })
+    return rows
+
+# ─── 用法示例 ─────────────────────────────────────────────────────
+
+# 1) 上证指数最近5个交易日
+sh = index_kline("上证指数", days=5)
+for bar in sh[-5:]:
+    print(f"{bar['date']}: 收盘{bar['close']:.2f} 成交额{bar['amount']/1e8:.2f}亿")
+
+# 2) 两市合计成交额（一键获取）
+total = market_total_amount(days=5)
+for t in total:
+    print(f"{t['date']}: 上证{t['sh_amount']:.0f}亿 + 深证{t['sz_amount']:.0f}亿 = {t['total']:.0f}亿")
+
+# 3) 板块K线（BK码从 industry_comparison 的 f12 获取）
+board = board_kline("BK1036", days=5)  # BK1036 = 半导体
+for bar in board[-5:]:
+    print(f"{bar['date']}: {bar['close']:.2f} 成交额{bar['amount']/1e8:.2f}亿")
+
+# 4) 个股K线同样可用
+stock = eastmoney_kline("1.600519", days=3)
+```
+
+> **注意：** `beg`/`end` 参数是必须的——不带这两个参数 push2his 会返回 `rc=102 data=null`。
+
+#### K线字段速查（fields2=f51~f61）
+
+| 字段 | 含义 | 单位 |
+|------|------|------|
+| f51 | 日期 | YYYY-MM-DD |
+| f52 | 开盘价 | — |
+| f53 | 收盘价 | — |
+| f54 | 最高价 | — |
+| f55 | 最低价 | — |
+| f56 | 成交量 | 手 |
+| f57 | **成交额** | **元** |
+| f58 | 振幅 | % |
+| f59 | 涨跌幅 | % |
+| f60 | 涨跌额 | — |
+| f61 | 换手率 | % |
+
+#### secid 格式速查
+
+| 类型 | secid 格式 | 示例 |
+|------|-----------|------|
+| 沪市个股/指数 | `1.` + 6位代码 | `1.600519` `1.000001` |
+| 深市个股/指数 | `0.` + 6位代码 | `0.000001` `0.399001` |
+| 行业/概念板块 | `90.` + BK码 | `90.BK0420` `90.BK1036` |
+
+> **BK 码获取方法：** 调用 `industry_comparison()`（§3.7），每条记录中的 `f12` 字段即为 BK 码。如 `BK1036`=半导体。
 
 ---
 
